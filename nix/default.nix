@@ -132,17 +132,14 @@ let
         printf 'masters =\nprofile-formats = portage-2\n' > $out/metadata/layout.conf
         cp ${eclass} $out/eclass/impurifier.eclass
         ${lib.concatMapStringsSep "\n"
-          (
-            id:
-            ''
-                ${
-                  if builtins.hasAttr id licenseFiles then
-                    "cp ${lib.escapeShellArg (toString licenseFiles.${id})} $out/licenses/${id}"
-                  else
-                    "test -f ${pkgs.spdx-license-list-data.text}/text/${id}.txt || { echo 'Provide licenseFiles.${id} for this native license' >&2; exit 1; }; cp ${pkgs.spdx-license-list-data.text}/text/${id}.txt $out/licenses/${id}"
-                }
-              ''
-          )
+          (id: ''
+            ${
+              if builtins.hasAttr id licenseFiles then
+                "cp ${lib.escapeShellArg (toString licenseFiles.${id})} $out/licenses/${id}"
+              else
+                "test -f ${pkgs.spdx-license-list-data.text}/text/${id}.txt || { echo 'Provide licenseFiles.${id} for this native license' >&2; exit 1; }; cp ${pkgs.spdx-license-list-data.text}/text/${id}.txt $out/licenses/${id}"
+            }
+          '')
           (
             lib.unique (
               lib.filter (id: builtins.match "[A-Za-z0-9_.+-]+" id != null) (lib.splitString " " license)

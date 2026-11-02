@@ -39,5 +39,8 @@ in
         test "$(wc -l < ${closure}/store-paths)" = 2
         touch $out
       '';
-  vm = import ./vm.nix { inherit pkgs impurifier; hardwareFixture = import (coreSrc + "/tests/hardware-fixture.nix") { inherit pkgs; }; };
+  vm = import ./vm.nix {
+    inherit pkgs impurifier;
+    hardwareFixture = import (coreSrc + "/tests/hardware-fixture.nix") { inherit pkgs; };
+  };
 }
