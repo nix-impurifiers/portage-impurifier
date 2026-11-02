@@ -8,6 +8,7 @@
       import ../../../nix {
         inherit pkgs;
         coreSrc = inputs.impurifier;
+        sourceInfo = inputs.self;
       };
   };
   perSystem =
@@ -16,6 +17,7 @@
       impurifier = import ../../../nix {
         inherit pkgs;
         coreSrc = inputs.impurifier;
+        sourceInfo = inputs.self;
       };
     in
     {
