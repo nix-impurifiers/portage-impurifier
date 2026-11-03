@@ -249,13 +249,15 @@ let
     };
   makeRuntimeOverlay =
     {
-      nixDependency ? "sys-apps/nix",
+      bundledNixStore ? null,
+      bundledNixNotices ? [ ],
+      nixDependency ? (if bundledNixStore == null then "sys-apps/nix" else null),
       pythonDependency ? "dev-lang/python",
     }:
     let
       payload = pkgs.runCommand "portage-impurifier-runtime-payload" { } ''
         mkdir -p $out
-        cp -r ${core.makeRuntimeTree { }}/. $out/
+        cp -r ${core.makeRuntimeTree { inherit bundledNixStore bundledNixNotices; }}/. $out/
         chmod -R u+w $out
         install -Dm755 ${activate} $out/usr/sbin/portage-impurifier-activate
         install -Dm755 ${sessionHook} $out/etc/portage/bin/post_emerge
@@ -268,10 +270,7 @@ let
       inherit payload;
       license = "MIT";
       activate = true;
-      dependencies = [
-        nixDependency
-        pythonDependency
-      ];
+      dependencies = lib.optional (nixDependency != null) nixDependency ++ [ pythonDependency ];
     };
   makeOverlay =
     {
@@ -338,6 +337,7 @@ in
     makeRuntimeOverlay
     makeOverlay
     ;
+  makeNativeEbuild = args: buildEbuild (args // { activate = false; });
   runtimeOverlay = makeRuntimeOverlay { };
   makeNetEbuild = args: makeEbuild (args // { offline = false; });
   makeOfflineEbuild = args: makeEbuild (args // { offline = true; });

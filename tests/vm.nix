@@ -3,6 +3,8 @@
   pkgs,
   impurifier,
   hardwareFixture,
+  bundled ? false,
+  coreSrc ? null,
 }:
 let
   stage3 = import ./gentoo.nix { inherit pkgs; };
@@ -115,13 +117,35 @@ let
       echo preinstalled > $out/usr/share/impurifier-vm/runtime
     '';
   };
+  native =
+    version:
+    impurifier.makeNativeEbuild {
+      name = "native-proof";
+      inherit version;
+      license = "MIT";
+      payload = pkgs.runCommand "native-portage-${version}" { } ''
+        mkdir -p $out/usr/libexec/native-proof $out/usr/share
+        cp ${pkgs.pkgsStatic.busybox}/bin/busybox $out/usr/libexec/native-proof/busybox
+        echo ${version} > $out/usr/share/native-proof-version
+      '';
+    };
   overlay = impurifier.makeOverlay {
     packages = [
       provider
+      (native "1")
+      (native "2")
       (hostDriver "1")
       (hostDriver "2")
       hardware
-      (impurifier.makeRuntimeOverlay { nixDependency = "sys-apps/nix-runtime-provider"; })
+      (impurifier.makeRuntimeOverlay (
+        {
+          nixDependency = "sys-apps/nix-runtime-provider";
+        }
+        // pkgs.lib.optionalAttrs bundled {
+          bundledNixStore = "${import (coreSrc + "/tests/static-nix.nix") { inherit pkgs; }}/bin/nix-store";
+          bundledNixNotices = [ "${pkgs.nix.src}/COPYING" ];
+        }
+      ))
       (app false "1")
       (app true "1")
       (app true "2")
@@ -165,8 +189,8 @@ pkgs.testers.runNixOSTest {
     machine.wait_for_unit("multi-user.target")
     machine.succeed("mkdir -p /srv/gentoo; tar xf ${stageTar} -C /srv/gentoo")
     machine.succeed("mkdir -p /srv/gentoo/nix /srv/gentoo/proc /srv/gentoo/dev /srv/gentoo/sys /srv/gentoo/opt/nix /srv/gentoo/var/lib/portage-impurifier /opt/nix /var/lib/portage-impurifier")
-    machine.succeed("mount --rbind /nix /srv/gentoo/nix; mount -t proc proc /srv/gentoo/proc; mount --rbind /dev /srv/gentoo/dev; mount --rbind /sys /srv/gentoo/sys; mount --bind /opt/nix /srv/gentoo/opt/nix; mount --bind /var/lib/portage-impurifier /srv/gentoo/var/lib/portage-impurifier")
-    machine.succeed("ln -s ${pkgs.nix}/bin/nix-store /srv/gentoo/usr/bin/nix-store; cp -r ${permissionOverlay} /srv/gentoo/permission-overlay; cp -r ${overlay} /srv/gentoo/impurifiers; chmod -R u+w /srv/gentoo/impurifiers")
+    machine.succeed("mount -t proc proc /srv/gentoo/proc; mount --rbind /dev /srv/gentoo/dev; mount --rbind /sys /srv/gentoo/sys; mount --bind /opt/nix /srv/gentoo/opt/nix; mount --bind /var/lib/portage-impurifier /srv/gentoo/var/lib/portage-impurifier")
+    machine.succeed("cp -r ${permissionOverlay} /srv/gentoo/permission-overlay; cp -r ${overlay} /srv/gentoo/impurifiers; chmod -R u+w /srv/gentoo/impurifiers")
     machine.succeed("mkdir -p /srv/gentoo/impurifiers/profiles/test; echo 8 > /srv/gentoo/impurifiers/profiles/test/eapi; rm -f /srv/gentoo/etc/portage/make.profile; ln -s /impurifiers/profiles/test /srv/gentoo/etc/portage/make.profile")
     machine.succeed("printf 'ARCH=amd64\\nCHOST=x86_64-pc-linux-gnu\\nACCEPT_KEYWORDS=amd64\\nCONFIG_PROTECT=/etc\\n' > /srv/gentoo/impurifiers/profiles/test/make.defaults")
     machine.succeed("printf '[DEFAULT]\\nmain-repo = nix-impurifiers\\n[nix-impurifiers]\\nlocation = /impurifiers\\nauto-sync = no\\n' > /srv/gentoo/etc/portage/repos.conf")
@@ -176,6 +200,20 @@ pkgs.testers.runNixOSTest {
     repositories = "[DEFAULT]\nmain-repo = nix-impurifiers\n[nix-impurifiers]\nlocation = /impurifiers\nauto-sync = no\n"
     root = "chroot /srv/gentoo /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C " + shlex.quote("PORTAGE_REPOSITORIES=" + repositories) + " "
     emerge = root + "/usr/bin/emerge --oneshot "
+    with subtest("native payloads run without target Nix"):
+        machine.succeed("test ! -e /srv/gentoo/nix/store && test ! -e /srv/gentoo/usr/bin/nix-store")
+        machine.succeed(emerge + "=app-misc/native-proof-1")
+        machine.succeed(root + "/usr/libexec/native-proof/busybox echo native-execution | grep native-execution")
+        machine.succeed(emerge + "=app-misc/native-proof-2")
+        machine.succeed("grep '^2$' /srv/gentoo/usr/share/native-proof-version")
+        machine.succeed(root + "emerge --unmerge app-misc/native-proof")
+        machine.succeed("test ! -e /srv/gentoo/usr/libexec/native-proof/busybox && test ! -e /srv/gentoo/usr/share/native-proof-version && test ! -e /srv/gentoo/nix/store")
+    machine.succeed("mount --rbind /nix /srv/gentoo/nix; ln -s ${
+      if bundled then
+        pkgs.writeShellScript "incompatible-nix-store" "echo incompatible; exit 1"
+      else
+        "${pkgs.nix}/bin/nix-store"
+    } /srv/gentoo/usr/bin/nix-store")
     machine.succeed(emerge + "sys-apps/portage-impurifier")
     machine.fail("test -e ${builtins.unsafeDiscardStringContext (toString (tool "1"))}")
     with subtest("failed substitution preserves the existing profile"):

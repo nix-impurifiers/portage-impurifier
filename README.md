@@ -66,3 +66,19 @@ failure/retry, service admin intent, directory changes without binary changes,
 custom hook preservation, direct ebuild activation, foreign-root safety and
 native host-driver dependencies/updates. The guest uses a NixOS kernel and
 preinstalled Nix; this does not claim a Gentoo boot or installer test.
+
+## Native payloads and bundled Nix
+
+`makeNativeEbuild { name; version; payload; license; dependencies?; ... }` emits
+a native PMS overlay from a producer-prepared filesystem tree, with activation
+disabled and no implicit Nix dependency. The producer supplies the target layout;
+this does not relocate binaries. The Gentoo VM installs, executes, upgrades and
+removes a static payload before mounting any Nix store into the native userspace.
+
+`makeRuntimeOverlay` optionally accepts `bundledNixStore` and
+`bundledNixNotices` for a static ELF client with upstream notices. This omits
+the default native Nix requirement; Python remains required. Compatible external
+clients take precedence, explicit `IMPURIFIER_NIX_STORE` disables fallback, and
+failed mutations are never retried through another client. A separate bundled
+VM repeats the native Gentoo lifecycle suite with an incompatible external
+candidate. Nix provisioning remains deferred.

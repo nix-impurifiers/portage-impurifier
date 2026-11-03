@@ -22,6 +22,11 @@ let
   };
 in
 {
+  bundled-vm = import ./vm.nix {
+    inherit pkgs impurifier coreSrc;
+    bundled = true;
+    hardwareFixture = import (coreSrc + "/tests/hardware-fixture.nix") { inherit pkgs; };
+  };
   unit = impurifier.unit;
   emitter =
     pkgs.runCommand "portage-impurifier-contract"
